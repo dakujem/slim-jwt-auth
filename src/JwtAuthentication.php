@@ -46,7 +46,6 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use RuntimeException;
-use Tuupola\Middleware\DoublePassTrait;
 use Tuupola\Http\Factory\ResponseFactory;
 use Tuupola\Middleware\JwtAuthentication\RequestMethodRule;
 use Tuupola\Middleware\JwtAuthentication\RequestPathRule;
@@ -85,13 +84,19 @@ final class JwtAuthentication implements MiddlewareInterface
         "ignore" => null,
         "before" => null,
         "after" => null,
-        "error" => null
+        "error" => null,
+        "responseFactory" => null,
     ];
 
     public function __construct(array $options = [])
     {
         /* Setup stack for rules */
         $this->rules = new \SplStack;
+
+        /* Make sure the response factory option is provided a default */
+        if (!isset($options['responseFactory'])) {
+            $options['responseFactory'] = null;
+        }
 
         /* Store passed in options overwriting any defaults. */
         $this->hydrate($options);
@@ -139,7 +144,7 @@ final class JwtAuthentication implements MiddlewareInterface
             $token = $this->fetchToken($request);
             $decoded = $this->decodeToken($token);
         } catch (RuntimeException | DomainException $exception) {
-            $response = (new ResponseFactory)->createResponse(401);
+            $response = call_user_func($this->options['responseFactory'], 401);
             return $this->processError($response, [
                 "message" => $exception->getMessage(),
                 "uri" => (string)$request->getUri()
@@ -158,7 +163,6 @@ final class JwtAuthentication implements MiddlewareInterface
 
         /* Modify $request before calling next middleware. */
         if (is_callable($this->options["before"])) {
-            $response = (new ResponseFactory)->createResponse(200);
             $beforeRequest = $this->options["before"]($request, $params);
             if ($beforeRequest instanceof ServerRequestInterface) {
                 $request = $beforeRequest;
@@ -450,6 +454,23 @@ final class JwtAuthentication implements MiddlewareInterface
     {
         foreach ($rules as $callable) {
             $this->rules->push($callable);
+        }
+    }
+
+    /**
+     * Set the response factory.
+     */
+    private function responseFactory(callable $factory = null): void
+    {
+        if ($factory === null) {
+            $factory = function ($code, ...$args) {
+                return (new ResponseFactory)->createResponse($code, ...$args);
+            };
+        }
+        if ($factory instanceof Closure) {
+            $this->options["responseFactory"] = $factory->bindTo($this);
+        } else {
+            $this->options["responseFactory"] = $factory;
         }
     }
 }
