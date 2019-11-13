@@ -141,6 +141,12 @@ final class JwtAuthentication implements MiddlewareInterface
             $decoded = $this->decodeToken($token);
         } catch (RuntimeException | DomainException $exception) {
             $factory = $this->options['responseFactory'] ?? new ResponseFactory;
+            if (!$factory instanceof ResponseFactoryInterface) {
+                $factory = call_user_func($factory); // resolve response factory
+                if (!$factory instanceof ResponseFactoryInterface) {
+                    throw new RuntimeException('Response factory provider must return an implementation of PSR-17 response factory.');
+                }
+            }
             $response = $factory->createResponse(401);
             return $this->processError($response, [
                 "message" => $exception->getMessage(),
@@ -457,8 +463,13 @@ final class JwtAuthentication implements MiddlewareInterface
     /**
      * Set the response factory.
      */
-    private function responseFactory(ResponseFactoryInterface $factory = null): void
+    private function responseFactory($factory = null): void
     {
+        if (null !== $factory && !$factory instanceof ResponseFactoryInterface && false === is_callable($factory)) {
+            throw new InvalidArgumentException(
+                'Response factory must either be an implementation of PSR-17 response factory or a callable provider returning such implementation.'
+            );
+        }
         $this->options["responseFactory"] = $factory;
     }
 }

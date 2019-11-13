@@ -237,8 +237,13 @@ A custom PSR-17 compatible response factory can be provided. If none is provided
 $app = new Slim\App;
 
 $app->add(new Tuupola\Middleware\JwtAuthentication([
-    "secret" => "supersecretkeyyoushouldnotcommittogithub",
     "responseFactory" => new MyResponseFactory,
+]));
+// alternatively a callable provider can be used
+$app->add(new Tuupola\Middleware\JwtAuthentication([
+    "responseFactory" => function (): Psr\Http\Message\ResponseFactoryInterface {
+        return new MyResponseFactory;
+    },
 ]));
 ```
 
